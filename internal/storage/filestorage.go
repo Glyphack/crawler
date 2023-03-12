@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"os"
 	"path"
 )
@@ -9,10 +10,17 @@ type FileStorage struct {
 	root string
 }
 
-func NewFileStorage(root string) *FileStorage {
+func NewFileStorage(root string) (*FileStorage, error) {
+	if _, err := os.Stat(root); err != nil {
+		err := os.MkdirAll(root, 0755)
+		if err != nil {
+			return nil, fmt.Errorf("Error creating root directory: %s", err)
+		}
+	}
+
 	return &FileStorage{
 		root: root,
-	}
+	}, nil
 }
 
 func (s *FileStorage) Get(filePath string) (string, error) {
@@ -35,6 +43,10 @@ func (s *FileStorage) Get(filePath string) (string, error) {
 
 func (s *FileStorage) Set(filePath string, value string) error {
 	fullPath := path.Join(s.root, filePath)
+	err := os.MkdirAll(path.Dir(fullPath), 0755)
+	if err != nil {
+		return err
+	}
 	file, err := os.Create(fullPath)
 	if err != nil {
 		return err
