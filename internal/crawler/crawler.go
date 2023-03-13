@@ -47,25 +47,23 @@ func (c *Crawler) Start() {
 
 	mergedResults := make(chan WorkerResult)
 	go mergeResults(workersResults, mergedResults)
-	processedSignal := make(chan struct{})
+	// processedSignal := make(chan struct{}, c.workerCount)
 	newUrls := make(chan *url.URL)
 	go func() {
 		for newUrl := range newUrls {
-			<-processedSignal
-			added := c.frontier.Add(newUrl)
-			if !added {
-				log.Warnf("Url %s already in frontier", newUrl)
-				go func() {
-					processedSignal <- struct{}{}
-				}()
-			}
+			_ = c.frontier.Add(newUrl)
+			// if !added {
+			// 	log.Warnf("Url %s already in frontier", newUrl)
+			// 	go func() {
+			// 		processedSignal <- struct{}{}
+			// 	}()
+			// }
 		}
 	}()
 
 	go func() {
 		for deadUrl := range c.deadLetter {
-			log.Printf("Dismissed %s", deadUrl)
-			processedSignal <- struct{}{}
+			log.Debugf("Dismissed %s", deadUrl)
 		}
 	}()
 
@@ -83,7 +81,6 @@ func (c *Crawler) Start() {
 				newUrls <- link
 			}
 		}()
-		processedSignal <- struct{}{}
 	}
 	log.Println("Crawler exited")
 }

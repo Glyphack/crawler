@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"fmt"
 	"net/url"
 	"path"
 
@@ -11,10 +12,10 @@ import (
 
 func SaveResult(result WorkerResult, storageBackend storage.Storage) error {
 	savePath := getSavePath(result.Url)
-	log.Printf("Saving result to %s", savePath)
 
 	switch result.ContentType {
 	default:
+		savePath = savePath + ".html"
 		err := storageBackend.Set(savePath, string(result.Body))
 		if err != nil {
 			return err
@@ -28,21 +29,19 @@ func ExtractLinks(content string, p parser.Parser) ([]*url.URL, error) {
 	foundUrls := make([]*url.URL, 0)
 	parsedUrls, err := p.Parse(content)
 	if err != nil {
-		log.Printf("Error parsing content: %s", err)
-		return foundUrls, err
+		return foundUrls, fmt.Errorf("Error parsing content: %s", err)
 	}
-	log.Printf("Found %d urls", len(parsedUrls))
+	log.Infof("Extracted %d urls", len(parsedUrls))
 	for _, parsedUrl := range parsedUrls {
 		newUrl, err := url.Parse(parsedUrl.Value)
 		if err != nil {
-			log.Printf("Error parsing url: %s", err)
+			log.Debugf("Error parsing url: %s", err)
 			continue
 		}
 		params := newUrl.Query()
 		for param := range params {
 			newUrl = stripQueryParam(newUrl, param)
 		}
-		log.Printf("Url after strip: %s", newUrl)
 		if newUrl.Scheme == "http" || newUrl.Scheme == "https" {
 			foundUrls = append(foundUrls, newUrl)
 		}
@@ -51,10 +50,7 @@ func ExtractLinks(content string, p parser.Parser) ([]*url.URL, error) {
 }
 
 func getSavePath(url *url.URL) string {
-	fileName := url.Path
-	if fileName == "" {
-		fileName = "index.html"
-	}
+	fileName := url.Path + "-page"
 	savePath := path.Join(url.Host, fileName)
 	return savePath
 }

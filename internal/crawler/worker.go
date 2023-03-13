@@ -22,6 +22,7 @@ type Worker struct {
 	result     chan WorkerResult
 	done       chan struct{}
 	id         int
+	logger     *log.Entry
 
 	// Only contains the host part of the URL
 	history map[string]time.Time
@@ -29,6 +30,7 @@ type Worker struct {
 
 func NewWorker(input chan *url.URL, result chan WorkerResult, done chan struct{}, id int, deadLetter chan *url.URL) *Worker {
 	history := make(map[string]time.Time)
+	logger := log.WithField("worker", id)
 	return &Worker{
 		input:      input,
 		result:     result,
@@ -36,17 +38,18 @@ func NewWorker(input chan *url.URL, result chan WorkerResult, done chan struct{}
 		id:         id,
 		history:    history,
 		deadLetter: deadLetter,
+		logger:     logger,
 	}
 }
 
 func (w *Worker) Start() {
-	log.Printf("Worker %d started", w.id)
+	w.logger.Debugf("Worker %d started", w.id)
 	for {
 		select {
 		case url := <-w.input:
 			content, err := w.fetch(url)
 			if err != nil {
-				log.Printf("Worker %d error fetching content: %s", w.id, err)
+				log.Errorf("Worker %d error fetching content: %s", w.id, err)
 				w.deadLetter <- url
 				continue
 			}
@@ -54,7 +57,7 @@ func (w *Worker) Start() {
 		case deadUrl := <-w.deadLetter:
 			content, err := w.fetch(deadUrl)
 			if err != nil {
-				log.Printf("Worker %d error fetching content: %s", w.id, err)
+				log.Errorf("Worker %d error fetching content: %s", w.id, err)
 				w.deadLetter <- deadUrl
 				continue
 			}
@@ -73,13 +76,12 @@ func (w *Worker) CheckPoliteness(url *url.URL) bool {
 }
 
 func (w *Worker) fetch(url *url.URL) (WorkerResult, error) {
-	log.Printf("Worker %d fetching %s", w.id, url)
-	defer log.Printf("Worker %d done fetching %s", w.id, url)
+	w.logger.Debugf("Worker %d fetching %s", w.id, url)
+	defer w.logger.Debugf("Worker %d done fetching %s", w.id, url)
 	defer func() {
 		w.history[url.Host] = time.Now()
 	}()
 	for !w.CheckPoliteness(url) {
-		log.Printf("Worker %d waiting for %s", w.id, url)
 		time.Sleep(2 * time.Second)
 	}
 	res, err := http.Get(url.String())

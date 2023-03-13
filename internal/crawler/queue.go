@@ -10,19 +10,22 @@ import (
 )
 
 func distributeUrls(frontier *frontier.Frontier, distributedInputs []chan *url.URL) {
+	HostToWorker := make(map[string]int)
 	for url := range frontier.Get() {
 		index := rand.Intn(len(distributedInputs))
+		if prevIndex, ok := HostToWorker[url.Host]; ok {
+			index = prevIndex
+		} else {
+			HostToWorker[url.Host] = index
+		}
 		distributedInputs[index] <- url
-		log.Printf("Distributed %s to worker %d", url, index)
 	}
 }
 
 func mergeResults(workersResults []chan WorkerResult, out chan WorkerResult) {
 	collect := func(in chan WorkerResult) {
 		for result := range in {
-			log.Printf("Got result to collect %s", result.Url)
 			out <- result
-			log.Printf("Collected result %s", result.Url)
 		}
 		log.Println("Worker finished")
 	}

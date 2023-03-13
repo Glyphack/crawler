@@ -12,7 +12,6 @@ import (
 func main() {
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 	initialUrls := []url.URL{}
-	done := make(chan bool)
 
 	myUrl, _ := url.Parse("https://glyphack.com")
 	initialUrls = append(initialUrls, *myUrl)
@@ -25,9 +24,6 @@ func main() {
 	contentParsers := []parser.Parser{}
 	contentParsers = append(contentParsers, &parser.HtmlParser{})
 
-	crawler := crawler.NewCrawler(initialUrls, contentStorage, 10, contentParsers)
-	go crawler.Start()
-	defer crawler.Terminate()
-
-	<-done
+	crawler := crawler.NewCrawler(initialUrls, contentStorage, 1000, contentParsers)
+	crawler.Start()
 }

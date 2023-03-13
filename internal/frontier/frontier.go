@@ -3,8 +3,6 @@ package frontier
 import (
 	"net/url"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type Frontier struct {
@@ -27,7 +25,6 @@ func NewFrontier(initialUrls []url.URL) *Frontier {
 }
 
 func (f *Frontier) Add(url *url.URL) bool {
-	log.Printf("Adding %s to frontier", url)
 	if f.terminating {
 		return false
 	}
@@ -37,7 +34,6 @@ func (f *Frontier) Add(url *url.URL) bool {
 	f.history[*url] = time.Now()
 	f.urls <- url
 
-	log.Printf("Added %s to frontier", url)
 	return true
 }
 
