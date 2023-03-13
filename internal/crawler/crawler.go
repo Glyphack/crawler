@@ -17,6 +17,7 @@ type Crawler struct {
 	contentParser   []parser.Parser
 	workerCount     int
 	deadLetter      chan *url.URL
+	processors      []Processor
 }
 
 func NewCrawler(initialUrls []url.URL, contentStorage storage.Storage, workerCount int, contentParser []parser.Parser) *Crawler {
@@ -49,15 +50,11 @@ func (c *Crawler) Start() {
 	go mergeResults(workersResults, mergedResults)
 	// processedSignal := make(chan struct{}, c.workerCount)
 	newUrls := make(chan *url.URL)
+	c.AddProcessor(&LinkExtractor{Parser: c.contentParser[0], NewUrls: newUrls})
+	c.AddProcessor(&SaveToFile{storageBackend: c.storage})
 	go func() {
 		for newUrl := range newUrls {
 			_ = c.frontier.Add(newUrl)
-			// if !added {
-			// 	log.Warnf("Url %s already in frontier", newUrl)
-			// 	go func() {
-			// 		processedSignal <- struct{}{}
-			// 	}()
-			// }
 		}
 	}()
 
@@ -68,19 +65,14 @@ func (c *Crawler) Start() {
 	}()
 
 	for result := range mergedResults {
-		err := SaveResult(result, c.storage)
-		if err != nil {
-			log.Error(err)
+		for _, processor := range c.processors {
+			go func(processor Processor, result WorkerResult) {
+				processErr := processor.Process(result)
+				if processErr != nil {
+					log.Error(processErr)
+				}
+			}(processor, result)
 		}
-		links, err := ExtractLinks(string(result.Body), c.contentParser[0])
-		if err != nil {
-			log.Error(err)
-		}
-		go func() {
-			for _, link := range links {
-				newUrls <- link
-			}
-		}()
 	}
 	log.Println("Crawler exited")
 }
@@ -88,11 +80,14 @@ func (c *Crawler) Start() {
 func (c *Crawler) Terminate() {
 	c.frontier.Terminate()
 }
-
 func (c *Crawler) AddContentParser(contentParser parser.Parser) {
 	c.contentParser = append(c.contentParser, contentParser)
 }
 
 func (c *Crawler) AddExcludePattern(pattern string) {
 	c.excludePatterns = append(c.excludePatterns, pattern)
+}
+
+func (c *Crawler) AddProcessor(processor Processor) {
+	c.processors = append(c.processors, processor)
 }
