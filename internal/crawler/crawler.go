@@ -1,11 +1,9 @@
 package crawler
 
 import (
-	"io"
-	"log"
-	"net/http"
 	"net/url"
-	"path"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/glyphack/crawler/internal/frontier"
 	"github.com/glyphack/crawler/internal/parser"
@@ -18,84 +16,76 @@ type Crawler struct {
 	storage         storage.Storage
 	contentParser   []parser.Parser
 	workerCount     int
-	deadLetter      chan http.Response
+	deadLetter      chan *url.URL
 }
 
 func NewCrawler(initialUrls []url.URL, contentStorage storage.Storage, workerCount int, contentParser []parser.Parser) *Crawler {
+	deadLetter := make(chan *url.URL)
 	return &Crawler{
 		frontier:      frontier.NewFrontier(initialUrls),
 		storage:       contentStorage,
 		workerCount:   workerCount,
 		contentParser: contentParser,
+		deadLetter:    deadLetter,
 	}
 }
 
 func (c *Crawler) Start() {
 	distributedInputs := make([]chan *url.URL, c.workerCount)
-	workersResults := make([]chan http.Response, c.workerCount)
+	workersResults := make([]chan WorkerResult, c.workerCount)
 	done := make(chan struct{})
 
 	for i := 0; i < c.workerCount; i++ {
 		distributedInputs[i] = make(chan *url.URL)
-		workersResults[i] = make(chan http.Response)
+		workersResults[i] = make(chan WorkerResult)
 	}
-
 	go distributeUrls(c.frontier, distributedInputs)
-
 	for i := 0; i < c.workerCount; i++ {
-		worker := NewWorker(distributedInputs[i], workersResults[i], done, i)
+		worker := NewWorker(distributedInputs[i], workersResults[i], done, i, c.deadLetter)
 		go worker.Start()
 	}
 
-	mergedResults := make(chan http.Response, 100)
+	mergedResults := make(chan WorkerResult)
 	go mergeResults(workersResults, mergedResults)
+	processedSignal := make(chan struct{})
+	newUrls := make(chan *url.URL)
+	go func() {
+		for newUrl := range newUrls {
+			<-processedSignal
+			added := c.frontier.Add(newUrl)
+			if !added {
+				log.Warnf("Url %s already in frontier", newUrl)
+				go func() {
+					processedSignal <- struct{}{}
+				}()
+			}
+		}
+	}()
+
+	go func() {
+		for deadUrl := range c.deadLetter {
+			log.Printf("Dismissed %s", deadUrl)
+			processedSignal <- struct{}{}
+		}
+	}()
+
 	for result := range mergedResults {
-		log.Printf("Got result for %s", result.Request.URL)
-		resultBody, err := io.ReadAll(result.Body)
-		result.Body.Close()
+		err := SaveResult(result, c.storage)
 		if err != nil {
-			log.Printf("Error reading content: %s", err)
-			// c.deadLetter <- result
-			continue
+			log.Error(err)
 		}
-		savePath := path.Join(result.Request.Host, result.Request.URL.Path)
-		err = c.storage.Set(savePath, string(resultBody))
-		log.Printf("Saved content to %s", savePath)
+		links, err := ExtractLinks(string(result.Body), c.contentParser[0])
 		if err != nil {
-			log.Printf("Error saving content: %s", err)
-			// c.deadLetter <- result
-			continue
+			log.Error(err)
 		}
-
-		parserHandled := false
-		for _, parser := range c.contentParser {
-			if parser.IsSupportedExtension(result.Request.URL.Path) {
-				parserHandled = true
-				log.Printf("Parsing content from %s with %s", result.Request.URL, c.contentParser)
-				parsedUrls, err := parser.Parse(string(resultBody))
-				if err != nil {
-					log.Printf("Error parsing content: %s", err)
-					continue
-				}
-				for _, parsedUrl := range parsedUrls {
-					url, err := url.Parse(parsedUrl.Value)
-					if err != nil {
-						log.Printf("Error parsing url: %s", err)
-						continue
-					}
-					if url.Scheme == "http" || url.Scheme == "https" {
-						c.frontier.Add(url)
-					}
-				}
+		go func() {
+			for _, link := range links {
+				newUrls <- link
 			}
-			if !parserHandled {
-				log.Printf("No parser found for %s", result.Request.URL)
-			}
-		}
-		log.Printf("Finished processing %s", result.Request.URL)
+		}()
+		processedSignal <- struct{}{}
 	}
-
-	log.Println("Crawler finished")
+	log.Println("Crawler exited")
 }
 
 func (c *Crawler) Terminate() {

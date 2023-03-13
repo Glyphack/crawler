@@ -1,10 +1,10 @@
 package crawler
 
 import (
-	"log"
 	"math/rand"
-	"net/http"
 	"net/url"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/glyphack/crawler/internal/frontier"
 )
@@ -13,16 +13,16 @@ func distributeUrls(frontier *frontier.Frontier, distributedInputs []chan *url.U
 	for url := range frontier.Get() {
 		index := rand.Intn(len(distributedInputs))
 		distributedInputs[index] <- url
+		log.Printf("Distributed %s to worker %d", url, index)
 	}
 }
 
-func mergeResults(workersResults []chan http.Response, out chan http.Response) {
-	collect := func(in chan http.Response) {
+func mergeResults(workersResults []chan WorkerResult, out chan WorkerResult) {
+	collect := func(in chan WorkerResult) {
 		for result := range in {
-			log.Printf("Got result to collect %s", result.Request.URL)
-			// Handle closed
+			log.Printf("Got result to collect %s", result.Url)
 			out <- result
-			log.Printf("Collected result %s", result.Request.URL)
+			log.Printf("Collected result %s", result.Url)
 		}
 		log.Println("Worker finished")
 	}
