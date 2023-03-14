@@ -8,6 +8,7 @@ Set initial Urls & storage config then run the crawler.
 
 ```go
 func main() {
+    log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
     initialUrls := []url.URL{}
 
     myUrl, _ := url.Parse("https://glyphack.com")
@@ -18,8 +19,24 @@ func main() {
         panic(err)
     }
 
-    crawler := crawler.NewCrawler(initialUrls, contentStorage, 10, contentParsers)
+    contentParsers := []parser.Parser{}
+    contentParsers = append(contentParsers, &JsonParser{})
+
+    crawler := crawler.NewCrawler(initialUrls, contentStorage, &crawler.Config{
+        MaxRedirects:    5,
+        RevisitDelay:    time.Hour * 2,
+        WorkerCount:     100,
+        ExcludePatterns: []string{},
+    })
+
+    // Adding custom parser to the crawler
+    crawler.AddContentParser(&JsonParser{})
+
+    // Adding custom processor to the crawler
+    crawler.AddProcessor(&LoggerProcessor{})
+
     crawler.Start()
+}
 }
 ```
 

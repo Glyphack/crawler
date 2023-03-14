@@ -22,8 +22,8 @@ func distributeUrls(frontier *frontier.Frontier, distributedInputs []chan *url.U
 	}
 }
 
-func mergeResults(workersResults []chan WorkerResult, out chan WorkerResult) {
-	collect := func(in chan WorkerResult) {
+func mergeResults(workersResults []chan CrawlResult, out chan CrawlResult) {
+	collect := func(in chan CrawlResult) {
 		for result := range in {
 			out <- result
 		}

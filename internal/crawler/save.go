@@ -6,7 +6,7 @@ type SaveToFile struct {
 	storageBackend storage.Storage
 }
 
-func (s *SaveToFile) Process(result WorkerResult) error {
+func (s *SaveToFile) Process(result CrawlResult) error {
 	savePath := getSavePath(result.Url)
 
 	switch result.ContentType {
