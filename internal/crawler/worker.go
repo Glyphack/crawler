@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type WorkerResult struct {
+type CrawlResult struct {
 	Url         *url.URL
 	ContentType string
 	Body        []byte
@@ -19,7 +19,7 @@ type WorkerResult struct {
 type Worker struct {
 	input      chan *url.URL
 	deadLetter chan *url.URL
-	result     chan WorkerResult
+	result     chan CrawlResult
 	done       chan struct{}
 	id         int
 	logger     *log.Entry
@@ -28,7 +28,7 @@ type Worker struct {
 	history map[string]time.Time
 }
 
-func NewWorker(input chan *url.URL, result chan WorkerResult, done chan struct{}, id int, deadLetter chan *url.URL) *Worker {
+func NewWorker(input chan *url.URL, result chan CrawlResult, done chan struct{}, id int, deadLetter chan *url.URL) *Worker {
 	history := make(map[string]time.Time)
 	logger := log.WithField("worker", id)
 	return &Worker{
@@ -75,7 +75,7 @@ func (w *Worker) CheckPoliteness(url *url.URL) bool {
 	return true
 }
 
-func (w *Worker) fetch(url *url.URL) (WorkerResult, error) {
+func (w *Worker) fetch(url *url.URL) (CrawlResult, error) {
 	w.logger.Debugf("Worker %d fetching %s", w.id, url)
 	defer w.logger.Debugf("Worker %d done fetching %s", w.id, url)
 	defer func() {
@@ -86,16 +86,16 @@ func (w *Worker) fetch(url *url.URL) (WorkerResult, error) {
 	}
 	res, err := http.Get(url.String())
 	if err != nil {
-		return WorkerResult{}, err
+		return CrawlResult{}, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return WorkerResult{}, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
+		return CrawlResult{}, fmt.Errorf("status code error: %d %s", res.StatusCode, res.Status)
 	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return WorkerResult{}, err
+		return CrawlResult{}, err
 	}
 
 	var inferredContentType string
@@ -106,7 +106,7 @@ func (w *Worker) fetch(url *url.URL) (WorkerResult, error) {
 		inferredContentType = http.DetectContentType(body)
 	}
 
-	return WorkerResult{
+	return CrawlResult{
 		Url:         url,
 		ContentType: inferredContentType,
 		Body:        body,

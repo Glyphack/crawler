@@ -8,10 +8,10 @@ import (
 )
 
 type Processor interface {
-	Process(WorkerResult) error
+	Process(CrawlResult) error
 }
 
-func SaveResult(result WorkerResult, storageBackend storage.Storage) error {
+func SaveResult(result CrawlResult, storageBackend storage.Storage) error {
 	savePath := getSavePath(result.Url)
 
 	switch result.ContentType {

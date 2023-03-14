@@ -6,7 +6,6 @@ type Token struct {
 }
 
 type Parser interface {
-	GetSupportedExtensions() []string
 	IsSupportedExtension(extension string) bool
 	Parse(content string) ([]Token, error)
 }

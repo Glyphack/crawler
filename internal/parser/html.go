@@ -12,12 +12,12 @@ import (
 type HtmlParser struct {
 }
 
-func (p *HtmlParser) GetSupportedExtensions() []string {
+func (p *HtmlParser) getSupportedExtensions() []string {
 	return []string{".html", ".htm"}
 }
 
 func (p *HtmlParser) IsSupportedExtension(extension string) bool {
-	for _, supportedExtension := range p.GetSupportedExtensions() {
+	for _, supportedExtension := range p.getSupportedExtensions() {
 		if extension == supportedExtension {
 			return true
 		}

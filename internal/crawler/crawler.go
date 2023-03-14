@@ -11,46 +11,45 @@ import (
 )
 
 type Crawler struct {
-	excludePatterns []string
-	frontier        *frontier.Frontier
-	storage         storage.Storage
-	contentParser   []parser.Parser
-	workerCount     int
-	deadLetter      chan *url.URL
-	processors      []Processor
+	config         *Config
+	frontier       *frontier.Frontier
+	storage        storage.Storage
+	contentParsers []parser.Parser
+	deadLetter     chan *url.URL
+	processors     []Processor
 }
 
-func NewCrawler(initialUrls []url.URL, contentStorage storage.Storage, workerCount int, contentParser []parser.Parser) *Crawler {
+func NewCrawler(initialUrls []url.URL, contentStorage storage.Storage, config *Config) *Crawler {
 	deadLetter := make(chan *url.URL)
+	contentParser := []parser.Parser{&parser.HtmlParser{}}
 	return &Crawler{
-		frontier:      frontier.NewFrontier(initialUrls),
-		storage:       contentStorage,
-		workerCount:   workerCount,
-		contentParser: contentParser,
-		deadLetter:    deadLetter,
+		frontier:       frontier.NewFrontier(initialUrls, config.ExcludePatterns),
+		storage:        contentStorage,
+		contentParsers: contentParser,
+		deadLetter:     deadLetter,
+		config:         config,
 	}
 }
 
 func (c *Crawler) Start() {
-	distributedInputs := make([]chan *url.URL, c.workerCount)
-	workersResults := make([]chan WorkerResult, c.workerCount)
+	distributedInputs := make([]chan *url.URL, c.config.WorkerCount)
+	workersResults := make([]chan CrawlResult, c.config.WorkerCount)
 	done := make(chan struct{})
 
-	for i := 0; i < c.workerCount; i++ {
+	for i := 0; i < c.config.WorkerCount; i++ {
 		distributedInputs[i] = make(chan *url.URL)
-		workersResults[i] = make(chan WorkerResult)
+		workersResults[i] = make(chan CrawlResult)
 	}
 	go distributeUrls(c.frontier, distributedInputs)
-	for i := 0; i < c.workerCount; i++ {
+	for i := 0; i < c.config.WorkerCount; i++ {
 		worker := NewWorker(distributedInputs[i], workersResults[i], done, i, c.deadLetter)
 		go worker.Start()
 	}
 
-	mergedResults := make(chan WorkerResult)
+	mergedResults := make(chan CrawlResult)
 	go mergeResults(workersResults, mergedResults)
-	// processedSignal := make(chan struct{}, c.workerCount)
 	newUrls := make(chan *url.URL)
-	c.AddProcessor(&LinkExtractor{Parser: c.contentParser[0], NewUrls: newUrls})
+	c.AddProcessor(&LinkExtractor{Parsers: c.contentParsers, NewUrls: newUrls})
 	c.AddProcessor(&SaveToFile{storageBackend: c.storage})
 	go func() {
 		for newUrl := range newUrls {
@@ -66,7 +65,7 @@ func (c *Crawler) Start() {
 
 	for result := range mergedResults {
 		for _, processor := range c.processors {
-			go func(processor Processor, result WorkerResult) {
+			go func(processor Processor, result CrawlResult) {
 				processErr := processor.Process(result)
 				if processErr != nil {
 					log.Error(processErr)
@@ -81,11 +80,11 @@ func (c *Crawler) Terminate() {
 	c.frontier.Terminate()
 }
 func (c *Crawler) AddContentParser(contentParser parser.Parser) {
-	c.contentParser = append(c.contentParser, contentParser)
+	c.contentParsers = append(c.contentParsers, contentParser)
 }
 
 func (c *Crawler) AddExcludePattern(pattern string) {
-	c.excludePatterns = append(c.excludePatterns, pattern)
+	c.config.ExcludePatterns = append(c.config.ExcludePatterns, pattern)
 }
 
 func (c *Crawler) AddProcessor(processor Processor) {

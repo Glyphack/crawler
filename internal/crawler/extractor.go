@@ -9,29 +9,34 @@ import (
 )
 
 type LinkExtractor struct {
-	Parser  parser.Parser
+	Parsers []parser.Parser
 	NewUrls chan *url.URL
 }
 
-func (e *LinkExtractor) Process(result WorkerResult) error {
+func (e *LinkExtractor) Process(result CrawlResult) error {
 	foundUrls := make([]*url.URL, 0)
-	parsedUrls, err := e.Parser.Parse(string(result.Body))
-	if err != nil {
-		return fmt.Errorf("Error parsing content: %s", err)
-	}
-	log.Infof("Extracted %d urls", len(parsedUrls))
-	for _, parsedUrl := range parsedUrls {
-		newUrl, err := url.Parse(parsedUrl.Value)
-		if err != nil {
-			log.Debugf("Error parsing url: %s", err)
+	for _, parser := range e.Parsers {
+		if !parser.IsSupportedExtension(result.ContentType) {
 			continue
 		}
-		params := newUrl.Query()
-		for param := range params {
-			newUrl = stripQueryParam(newUrl, param)
+		parsedUrls, err := parser.Parse(string(result.Body))
+		if err != nil {
+			return fmt.Errorf("Error parsing content: %s", err)
 		}
-		if newUrl.Scheme == "http" || newUrl.Scheme == "https" {
-			foundUrls = append(foundUrls, newUrl)
+		log.Infof("Extracted %d urls", len(parsedUrls))
+		for _, parsedUrl := range parsedUrls {
+			newUrl, err := url.Parse(parsedUrl.Value)
+			if err != nil {
+				log.Debugf("Error parsing url: %s", err)
+				continue
+			}
+			params := newUrl.Query()
+			for param := range params {
+				newUrl = stripQueryParam(newUrl, param)
+			}
+			if newUrl.Scheme == "http" || newUrl.Scheme == "https" {
+				foundUrls = append(foundUrls, newUrl)
+			}
 		}
 	}
 	for _, foundUrl := range foundUrls {
