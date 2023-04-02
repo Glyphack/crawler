@@ -54,14 +54,6 @@ func (w *Worker) Start() {
 				continue
 			}
 			w.result <- content
-		case deadUrl := <-w.deadLetter:
-			content, err := w.fetch(deadUrl)
-			if err != nil {
-				log.Errorf("Worker %d error fetching content: %s", w.id, err)
-				w.deadLetter <- deadUrl
-				continue
-			}
-			w.result <- content
 		case <-w.done:
 			return
 		}

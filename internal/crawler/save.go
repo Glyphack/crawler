@@ -1,6 +1,11 @@
 package crawler
 
-import "github.com/glyphack/crawler/internal/storage"
+import (
+	"net/url"
+	"path"
+
+	"github.com/glyphack/crawler/internal/storage"
+)
 
 type SaveToFile struct {
 	storageBackend storage.Storage
@@ -19,4 +24,10 @@ func (s *SaveToFile) Process(result CrawlResult) error {
 	}
 
 	return nil
+}
+
+func getSavePath(url *url.URL) string {
+	fileName := url.Path + "-page"
+	savePath := path.Join(url.Host, fileName)
+	return savePath
 }
